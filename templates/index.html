@@ -568,6 +568,7 @@ let currentMode = 'semantic';
 // === Mode ===
 function setMode(mode) {
     currentMode = mode;
+    sessionStorage.setItem('searchMode', mode);
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
     // Slide indicator to match active button size and position
     const activeBtn = document.querySelector(`.mode-btn[data-mode="${mode}"]`);
@@ -781,14 +782,22 @@ setInterval(refreshStatus, 5000);
 
 // Initialize slider position
 window.addEventListener('load', () => {
-    setMode('semantic');
-    // Restore last search results from sessionStorage
+    // Restore saved selections
+    const savedMode = sessionStorage.getItem('searchMode') || 'semantic';
+    const savedRegion = sessionStorage.getItem('selRegion');
+    const savedProduct = sessionStorage.getItem('selProduct');
+    const savedCategory = sessionStorage.getItem('selCategory');
+    if (savedRegion) document.getElementById('sel-region').value = savedRegion;
+    if (savedProduct) document.getElementById('sel-product').value = savedProduct;
+    if (savedCategory) document.getElementById('sel-category').value = savedCategory;
+    setMode(savedMode);
+
+    // Restore last search results
     const savedResults = sessionStorage.getItem('lastResults');
     if (savedResults) {
         try {
             const data = JSON.parse(savedResults);
             showResults(data.results);
-            // Re-request thumbnails if connected
             if (data.results.length > 0) {
                 socket.emit('request_thumbnails', { paths: data.results.map(r => r.path) });
             }
@@ -818,6 +827,11 @@ window.addEventListener('load', () => {
         } catch(e) {}
     }
 });
+
+// Save selections on change
+document.getElementById('sel-region').addEventListener('change', e => sessionStorage.setItem('selRegion', e.target.value));
+document.getElementById('sel-product').addEventListener('change', e => sessionStorage.setItem('selProduct', e.target.value));
+document.getElementById('sel-category').addEventListener('change', e => sessionStorage.setItem('selCategory', e.target.value));
 </script>
 </body>
 </html>

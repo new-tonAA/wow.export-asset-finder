@@ -576,11 +576,13 @@ def _run_extraction(resume, limit, category="all"):
             "eta": "",
         })
 
+        last_processed = start_index
         for i in range(start_index, total):
             if _stop_extraction:
                 break
 
             model_path = all_models[i]
+            last_processed = i
 
             try:
                 png_bytes = load_model_and_capture(driver, model_path)
@@ -633,15 +635,16 @@ def _run_extraction(resume, limit, category="all"):
                 })
 
             if len(extracted_paths) > 0 and len(extracted_paths) % 100 == 0:
-                _save_all(i, extracted_paths, extracted_vectors, extracted_colors, category)
+                _save_all(last_processed, extracted_paths, extracted_vectors, extracted_colors, category)
 
+        # Final save with actual last processed index
         if extracted_paths:
-            _save_all(total - 1, extracted_paths, extracted_vectors, extracted_colors, category)
+            _save_all(last_processed, extracted_paths, extracted_vectors, extracted_colors, category)
             load_faiss_index()
 
         socketio.emit("extraction_progress", {
             "status": "done" if not _stop_extraction else "stopped",
-            "current": total if not _stop_extraction else i,
+            "current": last_processed + 1,
             "total": total, "extracted": len(extracted_paths),
             "failed": failed_count, "model": "",
         })
