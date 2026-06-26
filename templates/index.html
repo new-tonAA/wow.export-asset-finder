@@ -624,6 +624,7 @@ function pickFile(file) {
         document.getElementById('upload-preview').src = e.target.result;
         document.getElementById('upload-preview').style.display = 'block';
         document.getElementById('upload-hint').style.display = 'none';
+        sessionStorage.setItem('lastImagePreview', e.target.result);
     };
     r.readAsDataURL(file);
     updateBtn();
@@ -650,6 +651,7 @@ function doSearch() {
             btn.textContent = 'Search'; updateBtn();
             if (data.error) { alert(data.error); return; }
             showResults(data.results);
+            sessionStorage.setItem('lastResults', JSON.stringify(data));
             socket.emit('request_thumbnails', { paths: data.results.map(r => r.path) });
         })
         .catch(err => { btn.textContent = 'Search'; updateBtn(); alert(err.message); });
@@ -729,11 +731,13 @@ socket.on('extraction_progress', d => {
     if (d.status === 'error') { showMsg(d.message); resetExtract(); return; }
     const pct = d.total > 0 ? (d.current / d.total * 100).toFixed(1) : 0;
     document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-track').classList.add('active');
     let statsHtml = `<strong>${d.current}</strong> / ${d.total} (${pct}%)`;
     statsHtml += ` &nbsp;|&nbsp; OK: ${d.extracted} &nbsp;|&nbsp; Skip: ${d.failed}`;
     if (d.eta) statsHtml += ` &nbsp;|&nbsp; ETA: <strong>${d.eta}</strong>`;
     if (d.model) statsHtml += `<br>${d.model}`;
     document.getElementById('extract-stats').innerHTML = statsHtml;
+    sessionStorage.setItem('lastProgress', JSON.stringify(d));
     if (d.status === 'done' || d.status === 'stopped') { resetExtract(); refreshStatus(); }
 });
 function resetExtract() {
@@ -776,7 +780,44 @@ refreshStatus();
 setInterval(refreshStatus, 5000);
 
 // Initialize slider position
-window.addEventListener('load', () => setMode('semantic'));
+window.addEventListener('load', () => {
+    setMode('semantic');
+    // Restore last search results from sessionStorage
+    const savedResults = sessionStorage.getItem('lastResults');
+    if (savedResults) {
+        try {
+            const data = JSON.parse(savedResults);
+            showResults(data.results);
+            // Re-request thumbnails if connected
+            if (data.results.length > 0) {
+                socket.emit('request_thumbnails', { paths: data.results.map(r => r.path) });
+            }
+        } catch(e) {}
+    }
+    // Restore uploaded image preview
+    const savedImage = sessionStorage.getItem('lastImagePreview');
+    if (savedImage) {
+        document.getElementById('upload-preview').src = savedImage;
+        document.getElementById('upload-preview').style.display = 'block';
+        document.getElementById('upload-hint').style.display = 'none';
+    }
+    // Restore extraction progress display
+    const savedProgress = sessionStorage.getItem('lastProgress');
+    if (savedProgress) {
+        try {
+            const d = JSON.parse(savedProgress);
+            if (d.current > 0) {
+                const pct = d.total > 0 ? (d.current / d.total * 100).toFixed(1) : 0;
+                document.getElementById('progress-bar').style.width = pct + '%';
+                document.getElementById('progress-track').classList.add('active');
+                let statsHtml = `<strong>${d.current}</strong> / ${d.total} (${pct}%)`;
+                statsHtml += ` &nbsp;|&nbsp; OK: ${d.extracted} &nbsp;|&nbsp; Skip: ${d.failed}`;
+                if (d.eta) statsHtml += ` &nbsp;|&nbsp; ETA: <strong>${d.eta}</strong>`;
+                document.getElementById('extract-stats').innerHTML = statsHtml;
+            }
+        } catch(e) {}
+    }
+});
 </script>
 </body>
 </html>
