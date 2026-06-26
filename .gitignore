@@ -1,0 +1,7 @@
+venv/
+features/
+wow_export_data/
+__pycache__/
+*.pyc
+*.log
+app.log

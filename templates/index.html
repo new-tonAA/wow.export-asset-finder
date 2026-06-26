@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WoW Asset Finder</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        :root {
+            --bg-0: #111111;
+            --bg-1: #1a1a1a;
+            --bg-2: #222222;
+            --bg-3: #2a2a2a;
+            --bg-card: #1e1e1e;
+            --border: #3a3a3a;
+            --border-hover: #555555;
+            --text-1: #ffffff;
+            --text-2: #cccccc;
+            --text-3: #888888;
+            --accent: #e8a500;
+            --accent-glow: #e8a50040;
+            --accent-hover: #ffbf00;
+            --success: #5cb85c;
+            --danger: #e74c3c;
+            --info: #5bc0de;
+            --radius: 8px;
+            --shadow: 0 4px 16px rgba(0,0,0,0.6);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            font-size: 17px;
+            background: var(--bg-0);
+            color: var(--text-1);
+        }
+
+        .app {
+            display: grid;
+            grid-template-rows: 46px 1fr;
+            height: 100vh;
+        }
+
+        /* ===== Header ===== */
+        .header {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 10;
+        }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header-brand h1 {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--text-1);
+            letter-spacing: -0.3px;
+        }
+        .header-brand span {
+            font-size: 0.82em;
+            color: var(--text-3);
+            padding: 3px 10px;
+            background: var(--bg-3);
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+        .header-stats {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 0.95em;
+            color: var(--text-2);
+        }
+        .header-stats strong { color: var(--text-1); }
+        .indicator {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .indicator::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            position: relative;
+            top: -1px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+        .indicator.on::before { background: var(--success); box-shadow: 0 0 6px var(--success); }
+        .indicator.pending::before { background: #ff9800; animation: pulse 1s infinite; }
+        @keyframes pulse { 50% { opacity: 0.3; } }
+
+        /* ===== Main Layout ===== */
+        .layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            overflow: hidden;
+        }
+
+        /* ===== Sidebar ===== */
+        .sidebar {
+            background: var(--bg-1);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--bg-3) transparent;
+        }
+        .sidebar::-webkit-scrollbar { width: 3px; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 2px; }
+
+        .sb-section {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sb-section:last-child { border-bottom: none; }
+        .sb-title {
+            font-size: 0.9em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-3);
+            margin-bottom: 8px;
+        }
+
+        /* Mode Selector */
+        .mode-selector {
+            display: flex;
+            background: var(--bg-0);
+            border-radius: 10px;
+            padding: 4px;
+            position: relative;
+        }
+        .mode-slider {
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            background: var(--bg-3);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 0;
+            pointer-events: none;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 7px 4px;
+            text-align: center;
+            font-size: 0.92em;
+            font-weight: 500;
+            color: var(--text-3);
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            z-index: 1;
+            position: relative;
+        }
+        .mode-btn:hover { color: var(--text-2); }
+        .mode-btn.active { color: var(--text-1); }
+
+        /* Upload */
+        .upload-area {
+            width: 100%;
+            height: 130px;
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-0);
+            margin-bottom: 6px;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--accent);
+            box-shadow: inset 0 0 30px var(--accent-glow);
+        }
+        .upload-area img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .upload-hint {
+            text-align: center;
+            color: var(--text-2);
+            font-size: 1em;
+        }
+        .upload-hint .plus { font-size: 2.5em; opacity: 0.6; margin-bottom: 0; line-height: 1; }
+        #file-input { display: none; }
+
+        /* Text Input */
+        .text-input {
+            width: 100%;
+            min-height: 70px;
+            max-height: 120px;
+            padding: 12px 14px;
+            background: var(--bg-0);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-1);
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.2s;
+            margin-bottom: 10px;
+        }
+        .text-input:focus { outline: none; border-color: var(--accent); }
+        .text-input::placeholder { color: var(--text-3); }
+
+        /* Search Button */
+        .btn-search {
+            width: 100%;
+            padding: 14px;
+            background: var(--text-1);
+            color: var(--bg-0);
+            border: none;
+            border-radius: 8px;
+            font-size: 1.05em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+        .btn-search:hover { filter: brightness(0.9); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255,255,255,0.1); }
+        .btn-search:active { transform: translateY(0); }
+        .btn-search:disabled { background: var(--bg-3); color: var(--text-3); cursor: not-allowed; transform: none; filter: none; box-shadow: none; }
+
+        /* Extraction */
+        .extract-btns {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            flex: 1;
+            padding: 10px 10px;
+            font-size: 0.92em;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-2);
+            color: var(--text-1);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { border-color: var(--border-hover); background: var(--bg-3); }
+        .btn.accent { border-color: var(--accent); color: var(--accent); }
+        .btn.accent:hover { background: var(--accent-glow); }
+        .btn.danger { border-color: var(--danger); color: var(--danger); }
+        .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        .progress-track {
+            height: 4px;
+            background: var(--bg-0);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 6px;
+            display: none;
+        }
+        .progress-track.active { display: block; }
+        .progress-track .bar {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.4s ease;
+            width: 0%;
+        }
+        .extract-stats {
+            font-size: 0.88em;
+            color: var(--text-2);
+            line-height: 1.6;
+        }
+        .msg-box {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: var(--bg-0);
+            border-radius: 6px;
+            border-left: 3px solid var(--text-3);
+            font-size: 0.9em;
+            color: var(--text-1);
+            display: none;
+        }
+        .msg-box.active { display: block; }
+
+        /* ===== Content Area ===== */
+        .content {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-0);
+        }
+        .content-header {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-1);
+            flex-shrink: 0;
+        }
+        .content-header h2 {
+            font-size: 1.05em;
+            font-weight: 600;
+            color: var(--text-1);
+        }
+        .content-header .meta {
+            font-size: 0.88em;
+            color: var(--text-3);
+        }
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .content-body::-webkit-scrollbar { width: 6px; }
+        .content-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* Results */
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 14px;
+        }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: all 0.25s;
+        }
+        .card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow);
+        }
+        .card-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            background: var(--bg-0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-thumb img { width: 100%; height: 100%; object-fit: contain; }
+        .card-thumb .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--text-3);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .card-thumb .no-preview { font-size: 0.8em; color: var(--text-3); }
+        .card-body { padding: 10px 12px; }
+        .card-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .card-rank { font-size: 0.92em; font-weight: 700; color: var(--text-1); }
+        .card-sim {
+            font-size: 0.82em;
+            color: var(--success);
+            background: rgba(92, 184, 92, 0.12);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .card-path {
+            font-size: 0.8em;
+            color: var(--text-3);
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        /* Empty */
+        .empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-3);
+            text-align: center;
+            gap: 12px;
+        }
+        .empty .icon { font-size: 3em; opacity: 0.5; }
+        .empty p { font-size: 1em; max-width: 360px; line-height: 1.6; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .layout {
+                grid-template-columns: 280px 1fr;
+            }
+            .results-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 10px;
+            }
+        }
+        @media (max-width: 600px) {
+            .layout {
+                grid-template-columns: 240px 1fr;
+            }
+            .header { padding: 0 12px; }
+            .header-brand h1 { font-size: 1.1em; }
+            .header-stats { font-size: 0.8em; gap: 10px; }
+            .mode-selector { grid-template-columns: repeat(2, 1fr); }
+            .results-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+            .content-body { padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-brand">
+            <h1>WoW Asset Finder</h1>
+            <span>CLIP + Color Search</span>
+        </div>
+        <div class="header-stats">
+            <div class="indicator" id="conn-indicator">
+                <span id="conn-text">Disconnected</span>
+            </div>
+            <div>Models: <strong id="index-count">0</strong></div>
+        </div>
+    </header>
+
+    <div class="layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Search Mode -->
+            <div class="sb-section">
+                <div class="sb-title">Search Mode</div>
+                <div class="mode-selector">
+                    <div class="mode-slider" id="mode-slider"></div>
+                    <button class="mode-btn active" data-mode="semantic" data-index="0" onclick="setMode('semantic')">Semantic</button>
+                    <button class="mode-btn" data-mode="color" data-index="1" onclick="setMode('color')">Color</button>
+                    <button class="mode-btn" data-mode="text" data-index="2" onclick="setMode('text')">Text</button>
+                    <button class="mode-btn" data-mode="combined" data-index="3" onclick="setMode('combined')">Combined</button>
+                </div>
+            </div>
+
+            <!-- Input -->
+            <div class="sb-section">
+                <div class="sb-title">Input</div>
+
+                <div id="input-container" style="min-height:110px">
+                    <div id="sec-image">
+                        <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+                            <div class="upload-hint" id="upload-hint">
+                                <div class="plus">+</div>
+                                <div>Drop image or click</div>
+                            </div>
+                            <img id="upload-preview" style="display:none">
+                        </div>
+                        <input type="file" id="file-input" accept="image/*" onchange="onFileSelect(event)">
+                    </div>
+
+                    <div id="sec-text" style="display:none">
+                        <textarea class="text-input" id="text-query" style="min-height:100px"
+                            placeholder="Describe the model you're looking for..."></textarea>
+                    </div>
+                </div>
+
+                <button class="btn-search" id="btn-search" onclick="doSearch()" disabled>Search Top-12</button>
+            </div>
+
+            <!-- wow.export -->
+            <div class="sb-section">
+                <div class="sb-title">wow.export</div>
+
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                    <select id="sel-region" style="flex:1;padding:6px;background:var(--bg-0);border:1px solid var(--border);border-radius:6px;color:var(--text-1);font-size:0.9em">
+                        <option value="tw" selected>Taiwan</option>
+                        <option value="us">Americas</option>
+                        <option value="eu">Europe</option>
+                        <option value="kr">Korea</option>
+                        <option value="cn">China</option>
+                    </select>
+                    <select id="sel-product" style="flex:1.5;padding:6px;background:var(--bg-0);border:1px solid var(--border);border-radius:6px;color:var(--text-1);font-size:0.9em">
+                        <option value="wow" selected>Retail (Live)</option>
+                        <option value="wowt">PTR</option>
+                        <option value="wowxptr">PTR 2</option>
+                        <option value="wow_beta">Beta</option>
+                        <option value="wow_classic">Classic</option>
+                        <option value="wow_classic_era">Classic Era</option>
+                    </select>
+                </div>
+
+                <button class="btn accent" id="btn-connect" onclick="connectWow()" style="width:100%;margin-bottom:4px">Connect</button>
+                <div class="msg-box" id="msg-box"></div>
+
+                <div style="margin-top:6px">
+                    <select id="sel-category" style="width:100%;padding:6px;background:var(--bg-0);border:1px solid var(--border);border-radius:6px;color:var(--text-1);font-size:0.9em;margin-bottom:6px">
+                        <option value="all">All Models (143k+)</option>
+                        <option value="wmo">WMO - Buildings & Structures</option>
+                        <option value="m2_creatures">Creatures</option>
+                        <option value="m2_items">Items</option>
+                        <option value="m2_characters">Characters</option>
+                        <option value="m2_doodads">Doodads & Props</option>
+                        <option value="m2_environment">Environment</option>
+                        <option value="m2_spells">Spells & Effects</option>
+                    </select>
+                    <div class="extract-btns">
+                        <button class="btn accent" id="btn-ex-all" onclick="startExtract(false)">Extract All</button>
+                        <button class="btn" id="btn-ex-resume" onclick="startExtract(true)">Resume</button>
+                        <button class="btn danger" id="btn-ex-stop" onclick="stopExtract()" disabled>Stop</button>
+                        <input type="number" value="0" min="0" id="ex-limit"
+                            style="width:50px;padding:5px;background:var(--bg-0);border:1px solid var(--border);border-radius:5px;color:var(--text-1);font-size:0.82em;text-align:center"
+                            title="Limit (0=all)">
+                    </div>
+                    <div class="progress-track" id="progress-track">
+                        <div class="bar" id="progress-bar"></div>
+                    </div>
+                    <div class="extract-stats" id="extract-stats"></div>
+                    <button class="btn danger" id="btn-delete-index" onclick="deleteIndex()" style="width:100%;margin-top:10px;display:none">Delete Index</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Content -->
+        <main class="content">
+            <div class="content-header">
+                <h2>Results</h2>
+                <span class="meta" id="results-meta"></span>
+            </div>
+            <div class="content-body" id="content-body">
+                <div class="empty">
+                    <div class="icon">&#128269;</div>
+                    <p>Select a search mode and provide an image or text description to find similar WoW models</p>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+const socket = io();
+let selectedFile = null;
+let currentMode = 'semantic';
+
+// === Mode ===
+function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    // Slide indicator to match active button size and position
+    const activeBtn = document.querySelector(`.mode-btn[data-mode="${mode}"]`);
+    const slider = document.getElementById('mode-slider');
+    const container = activeBtn.parentElement;
+    slider.style.left = (activeBtn.offsetLeft) + 'px';
+    slider.style.width = (activeBtn.offsetWidth) + 'px';
+
+    const showImg = mode === 'semantic' || mode === 'color' || mode === 'combined';
+    const showTxt = mode === 'text' || mode === 'combined';
+    document.getElementById('sec-image').style.display = showImg ? 'block' : 'none';
+    document.getElementById('sec-text').style.display = showTxt ? 'block' : 'none';
+    updateBtn();
+}
+
+function updateBtn() {
+    const hasImg = selectedFile !== null;
+    const hasTxt = document.getElementById('text-query').value.trim().length > 0;
+    let ok = false;
+    if (currentMode === 'semantic' || currentMode === 'color') ok = hasImg;
+    else if (currentMode === 'text') ok = hasTxt;
+    else ok = hasImg || hasTxt;
+    // Disable if no index available
+    if (!hasIndex) ok = false;
+    document.getElementById('btn-search').disabled = !ok;
+}
+document.getElementById('text-query').addEventListener('input', updateBtn);
+
+// === Upload ===
+const uploadArea = document.getElementById('upload-area');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('dragover'); if(e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]); });
+
+// Paste support (Ctrl+V anywhere on the page)
+document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (file) pickFile(file);
+            return;
+        }
+    }
+});
+
+function onFileSelect(e) { if(e.target.files[0]) pickFile(e.target.files[0]); }
+function pickFile(file) {
+    selectedFile = file;
+    const r = new FileReader();
+    r.onload = e => {
+        document.getElementById('upload-preview').src = e.target.result;
+        document.getElementById('upload-preview').style.display = 'block';
+        document.getElementById('upload-hint').style.display = 'none';
+    };
+    r.readAsDataURL(file);
+    updateBtn();
+}
+
+// === Search ===
+function doSearch() {
+    const btn = document.getElementById('btn-search');
+    btn.disabled = true; btn.textContent = 'Searching...';
+
+    const fd = new FormData();
+    fd.append('mode', currentMode);
+    if (selectedFile && currentMode !== 'text') fd.append('image', selectedFile);
+    const txt = document.getElementById('text-query').value.trim();
+    if (txt && currentMode !== 'semantic' && currentMode !== 'color') fd.append('text', txt);
+    if (currentMode === 'combined') {
+        fd.append('w_semantic', '0.6');
+        fd.append('w_text', '0.4');
+    }
+
+    fetch('/api/search', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            btn.textContent = 'Search'; updateBtn();
+            if (data.error) { alert(data.error); return; }
+            showResults(data.results);
+            socket.emit('request_thumbnails', { paths: data.results.map(r => r.path) });
+        })
+        .catch(err => { btn.textContent = 'Search'; updateBtn(); alert(err.message); });
+}
+
+function showResults(results) {
+    const body = document.getElementById('content-body');
+    document.getElementById('results-meta').textContent = results.length + ' matches';
+    if (!results.length) {
+        body.innerHTML = '<div class="empty"><div class="icon">&#x2205;</div><p>No matches found. Build the feature index first.</p></div>';
+        return;
+    }
+    let html = '<div class="results-grid">';
+    results.forEach((r, i) => {
+        html += `<div class="card">
+            <div class="card-thumb" id="thumb-${i}"><div class="spinner"></div></div>
+            <div class="card-body">
+                <div class="card-meta">
+                    <span class="card-rank">#${r.rank}</span>
+                    <span class="card-sim">${(r.similarity*100).toFixed(1)}%</span>
+                </div>
+                <div class="card-path">${r.path}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+socket.on('thumbnail_result', d => {
+    const el = document.getElementById('thumb-' + d.index);
+    if (!el) return;
+    el.innerHTML = d.image ? `<img src="data:image/png;base64,${d.image}">` : '<span class="no-preview">No preview</span>';
+});
+
+// === Connection ===
+function connectWow() {
+    const region = document.getElementById('sel-region').value;
+    const product = document.getElementById('sel-product').value;
+    document.getElementById('btn-connect').disabled = true;
+    showMsg('Launching wow.export...');
+    socket.emit('connect_wow_export', { region, product });
+}
+socket.on('connection_status', d => {
+    showMsg(d.message);
+    const ind = document.getElementById('conn-indicator');
+    const txt = document.getElementById('conn-text');
+    const btn = document.getElementById('btn-connect');
+    if (d.connected) {
+        ind.className = 'indicator on'; txt.textContent = 'Connected';
+        btn.disabled = false;
+        btn.textContent = 'Reconnect';
+    } else if (d.message.startsWith('Failed')) {
+        ind.className = 'indicator'; txt.textContent = 'Disconnected';
+        btn.disabled = false;
+    } else {
+        ind.className = 'indicator pending';
+    }
+});
+function showMsg(t) { const m = document.getElementById('msg-box'); m.textContent = t; m.classList.add('active'); }
+
+// === Extraction ===
+function startExtract(resume) {
+    const limit = parseInt(document.getElementById('ex-limit').value) || 0;
+    const category = document.getElementById('sel-category').value;
+    document.getElementById('btn-ex-all').disabled = true;
+    document.getElementById('btn-ex-resume').disabled = true;
+    document.getElementById('btn-ex-stop').disabled = false;
+    document.getElementById('progress-track').classList.add('active');
+    socket.emit('start_extraction', { resume, limit, category });
+}
+function stopExtract() {
+    socket.emit('stop_extraction');
+    document.getElementById('btn-ex-stop').disabled = true;
+}
+socket.on('extraction_progress', d => {
+    if (d.status === 'error') { showMsg(d.message); resetExtract(); return; }
+    const pct = d.total > 0 ? (d.current / d.total * 100).toFixed(1) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    let statsHtml = `<strong>${d.current}</strong> / ${d.total} (${pct}%)`;
+    statsHtml += ` &nbsp;|&nbsp; OK: ${d.extracted} &nbsp;|&nbsp; Skip: ${d.failed}`;
+    if (d.eta) statsHtml += ` &nbsp;|&nbsp; ETA: <strong>${d.eta}</strong>`;
+    if (d.model) statsHtml += `<br>${d.model}`;
+    document.getElementById('extract-stats').innerHTML = statsHtml;
+    if (d.status === 'done' || d.status === 'stopped') { resetExtract(); refreshStatus(); }
+});
+function resetExtract() {
+    document.getElementById('btn-ex-all').disabled = false;
+    document.getElementById('btn-ex-resume').disabled = false;
+    document.getElementById('btn-ex-stop').disabled = true;
+}
+
+function deleteIndex() {
+    if (!confirm('Are you sure you want to delete the feature index? This cannot be undone.')) return;
+    fetch('/api/delete_index', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showMsg('Index deleted.');
+                refreshStatus();
+            } else {
+                alert('Delete failed: ' + d.error);
+            }
+        });
+}
+
+// === Status ===
+let hasIndex = false;
+function refreshStatus() {
+    fetch('/api/status').then(r=>r.json()).then(d => {
+        document.getElementById('index-count').textContent = d.index_size;
+        hasIndex = d.index_size > 0;
+        const ind = document.getElementById('conn-indicator');
+        const txt = document.getElementById('conn-text');
+        if (d.driver_connected) { ind.className = 'indicator on'; txt.textContent = 'Connected'; }
+        else { ind.className = 'indicator'; txt.textContent = 'Disconnected'; }
+        // Show/hide delete button
+        document.getElementById('btn-delete-index').style.display = hasIndex ? 'block' : 'none';
+        // Update search button state
+        updateBtn();
+    });
+}
+refreshStatus();
+setInterval(refreshStatus, 5000);
+
+// Initialize slider position
+window.addEventListener('load', () => setMode('semantic'));
+</script>
+</body>
+</html>
