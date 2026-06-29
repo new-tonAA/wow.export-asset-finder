@@ -405,6 +405,20 @@ def handle_thumbnail_request(data):
         except Exception as e:
             emit("thumbnail_result", {"index": i, "path": model_path, "image": None, "error": str(e)})
 
+    # Release renderer control back to wow.export so user can browse freely
+    try:
+        driver.execute_script("""
+            if (window.__autoRenderer) {
+                window.__autoRenderer.dispose();
+                window.__autoRenderer = null;
+            }
+            // Restore original getActiveRenderer if it was overridden
+            if (core.view.modelViewerContext)
+                core.view.modelViewerContext.getActiveRenderer = null;
+        """)
+    except Exception:
+        pass
+
 
 @socketio.on("connect_wow_export")
 def handle_connect(data=None):
