@@ -91,22 +91,33 @@ def get_clip():
 
 
 def extract_color_histogram(image_bytes):
-    """Extract normalized HSV color histogram from image bytes."""
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    """Extract normalized HSV color histogram from image bytes, ignoring transparent/white background."""
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img_array = np.array(image)
 
-    # Convert RGB to HSV manually (avoid cv2 dependency)
-    r, g, b = img_array[:,:,0]/255.0, img_array[:,:,1]/255.0, img_array[:,:,2]/255.0
+    # Use alpha channel to mask out background if available
+    alpha = img_array[:, :, 3]
+    mask = alpha > 10  # Only count visible pixels
+
+    if mask.sum() < 100:
+        # Almost no visible pixels, return zero vector
+        return np.zeros(COLOR_VECTOR_DIM, dtype=np.float32)
+
+    # Extract only visible pixels
+    r = img_array[:, :, 0][mask] / 255.0
+    g = img_array[:, :, 1][mask] / 255.0
+    b = img_array[:, :, 2][mask] / 255.0
+
     cmax = np.maximum(np.maximum(r, g), b)
     cmin = np.minimum(np.minimum(r, g), b)
     diff = cmax - cmin
 
     # Hue
     h = np.zeros_like(cmax)
-    mask = diff != 0
-    mask_r = mask & (cmax == r)
-    mask_g = mask & (cmax == g)
-    mask_b = mask & (cmax == b)
+    hmask = diff != 0
+    mask_r = hmask & (cmax == r)
+    mask_g = hmask & (cmax == g)
+    mask_b = hmask & (cmax == b)
     h[mask_r] = (60 * ((g[mask_r] - b[mask_r]) / diff[mask_r]) + 360) % 360
     h[mask_g] = (60 * ((b[mask_g] - r[mask_g]) / diff[mask_g]) + 120) % 360
     h[mask_b] = (60 * ((r[mask_b] - g[mask_b]) / diff[mask_b]) + 240) % 360

@@ -229,6 +229,10 @@ def load_model_and_capture(driver, model_path, timeout=MODEL_LOAD_TIMEOUT):
     success = driver.execute_script(f"""
         return (async () => {{
             try {{
+                // Disable background and grid for clean capture
+                core.view.config.modelViewerShowBackground = false;
+                core.view.config.modelViewerShowGrid = false;
+
                 const listfile = require('./js/casc/listfile');
                 const file_data_id = listfile.getByFilename("{model_path}");
                 if (!file_data_id) return 'no_id';
@@ -310,24 +314,33 @@ def load_model_and_capture(driver, model_path, timeout=MODEL_LOAD_TIMEOUT):
     base64_str = canvas_data.split(",", 1)[1]
     png_bytes = base64.b64decode(base64_str)
 
-    # Check if the image is essentially blank (grid-only or empty)
-    # Compare center region vs edges - if model exists, center will differ from edges
+    # Use alpha channel to mask out background
     try:
-        img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-        img_array = np.array(img, dtype=np.float32)
-        h, w = img_array.shape[:2]
-        # Center 50% of the image
-        center = img_array[h//4:3*h//4, w//4:3*w//4]
-        # Edge strips
-        top_edge = img_array[:h//8, :]
-        center_mean = center.mean()
-        edge_mean = top_edge.mean()
-        # If center and edge look the same, it's likely empty
-        if abs(center_mean - edge_mean) < 3.0 and img_array.var() < MIN_IMAGE_VARIANCE:
+        img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+        img_array = np.array(img)
+        alpha = img_array[:, :, 3]
+
+        # If almost no visible pixels, model is empty
+        visible_pixels = (alpha > 10).sum()
+        total_pixels = alpha.shape[0] * alpha.shape[1]
+        if visible_pixels < total_pixels * 0.01:
             skip_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "features", "skip_log.txt")
             with open(skip_log, "a", encoding="utf-8") as f:
-                f.write(f"{model_path}\tblank_image (var={img_array.var():.1f}, diff={abs(center_mean - edge_mean):.1f})\n")
+                f.write(f"{model_path}\tblank_image (visible={visible_pixels}/{total_pixels})\n")
             return None
+
+        # Composite onto white background for CLIP (CLIP expects RGB)
+        rgb = img_array[:, :, :3].astype(np.float32)
+        alpha_f = (alpha / 255.0)[:, :, np.newaxis]
+        white_bg = np.ones_like(rgb) * 255.0
+        composited = (rgb * alpha_f + white_bg * (1 - alpha_f)).astype(np.uint8)
+
+        # Re-encode as PNG bytes for CLIP processing
+        comp_img = Image.fromarray(composited, "RGB")
+        buf = io.BytesIO()
+        comp_img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
     except Exception:
         return None
 
