@@ -46,10 +46,36 @@ import open_clip
 
 
 # --- Config ---
-WOW_EXPORT_DIR = r"C:\wow.export\wow.export\bin\win-x64-debug"
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(PROJECT_DIR, "config.json")
+
+def _load_config():
+    """Load wow.export path from config.json, or auto-detect."""
+    # 1. Try config.json
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            cfg = json.load(f)
+            path = cfg.get("wow_export_dir", "")
+            if path and os.path.isdir(path):
+                return path
+
+    # 2. Try common locations
+    candidates = [
+        os.path.join(PROJECT_DIR, "wow.export"),  # Alongside this project
+        r"C:\wow.export\wow.export\bin\win-x64-debug",
+        os.path.join(os.environ.get("USERPROFILE", ""), "wow.export", "wow.export", "bin", "win-x64-debug"),
+    ]
+    for c in candidates:
+        if os.path.isfile(os.path.join(c, "nw.exe")):
+            return c
+
+    # 3. Not found - will fail at connect time with clear error
+    return ""
+
+WOW_EXPORT_DIR = _load_config()
 NW_EXE = os.path.join(WOW_EXPORT_DIR, "nw.exe")
 CHROMEDRIVER_EXE = os.path.join(WOW_EXPORT_DIR, "chromedriver.exe")
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = PROJECT_DIR
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "wow_model_features.npz")
 PROGRESS_FILE = os.path.join(OUTPUT_DIR, "progress.json")
 
@@ -62,7 +88,8 @@ BUSY_WAIT_TIMEOUT = 30
 # Canvas screenshot size (will be resized for CLIP)
 CLIP_IMAGE_SIZE = 224
 # Minimum pixel variance to consider an image non-empty
-MIN_IMAGE_VARIANCE = 50.0
+# wow.export grid-only background is ~37, so 40 filters empty without killing dark models
+MIN_IMAGE_VARIANCE = 40.0
 
 
 def load_clip_model(device="cuda" if torch.cuda.is_available() else "cpu"):
@@ -95,6 +122,13 @@ def connect_to_wow_export():
     nw.js ships with its own chromedriver that speaks the same protocol.
     """
     print("Connecting to wow.export via ChromeDriver...")
+
+    if not WOW_EXPORT_DIR or not os.path.isfile(NW_EXE):
+        raise FileNotFoundError(
+            f"wow.export not found. Please set the path in config.json.\n"
+            f"  Expected: nw.exe at '{NW_EXE}'\n"
+            f"  Copy config.example.json to config.json and update the path."
+        )
 
     service = Service(executable_path=CHROMEDRIVER_EXE)
 
@@ -246,6 +280,10 @@ def load_model_and_capture(driver, model_path, timeout=MODEL_LOAD_TIMEOUT):
     """)
 
     if not success or not success.startswith("ok"):
+        # Log skip reason
+        skip_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "features", "skip_log.txt")
+        with open(skip_log, "a", encoding="utf-8") as f:
+            f.write(f"{model_path}\t{success}\n")
         return None
 
     # Wait for isBusy to clear (model fully loaded including async textures)
@@ -273,11 +311,22 @@ def load_model_and_capture(driver, model_path, timeout=MODEL_LOAD_TIMEOUT):
     png_bytes = base64.b64decode(base64_str)
 
     # Check if the image is essentially blank (grid-only or empty)
+    # Compare center region vs edges - if model exists, center will differ from edges
     try:
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
         img_array = np.array(img, dtype=np.float32)
-        variance = img_array.var()
-        if variance < MIN_IMAGE_VARIANCE:
+        h, w = img_array.shape[:2]
+        # Center 50% of the image
+        center = img_array[h//4:3*h//4, w//4:3*w//4]
+        # Edge strips
+        top_edge = img_array[:h//8, :]
+        center_mean = center.mean()
+        edge_mean = top_edge.mean()
+        # If center and edge look the same, it's likely empty
+        if abs(center_mean - edge_mean) < 3.0 and img_array.var() < MIN_IMAGE_VARIANCE:
+            skip_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "features", "skip_log.txt")
+            with open(skip_log, "a", encoding="utf-8") as f:
+                f.write(f"{model_path}\tblank_image (var={img_array.var():.1f}, diff={abs(center_mean - edge_mean):.1f})\n")
             return None
     except Exception:
         return None

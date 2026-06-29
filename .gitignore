@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 *.log
 app.log
+config.json

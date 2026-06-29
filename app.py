@@ -636,6 +636,7 @@ def _run_extraction(resume, limit, category="all"):
 
             if len(extracted_paths) > 0 and len(extracted_paths) % 100 == 0:
                 _save_all(last_processed, extracted_paths, extracted_vectors, extracted_colors, category)
+                load_faiss_index()
 
         # Final save with actual last processed index
         if extracted_paths:
