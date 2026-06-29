@@ -329,14 +329,14 @@ def load_model_and_capture(driver, model_path, timeout=MODEL_LOAD_TIMEOUT):
                 f.write(f"{model_path}\tblank_image (visible={visible_pixels}/{total_pixels})\n")
             return None
 
-        # Composite onto white background for CLIP (CLIP expects RGB)
-        rgb = img_array[:, :, :3].astype(np.float32)
-        alpha_f = (alpha / 255.0)[:, :, np.newaxis]
-        white_bg = np.ones_like(rgb) * 255.0
-        composited = (rgb * alpha_f + white_bg * (1 - alpha_f)).astype(np.uint8)
+        # Keep transparent background - set invisible pixels to neutral gray
+        # This prevents background from influencing CLIP features
+        rgb = img_array[:, :, :3].copy()
+        bg_mask = alpha <= 10
+        rgb[bg_mask] = [128, 128, 128]  # Neutral gray for background
 
-        # Re-encode as PNG bytes for CLIP processing
-        comp_img = Image.fromarray(composited, "RGB")
+        # Re-encode as PNG bytes
+        comp_img = Image.fromarray(rgb, "RGB")
         buf = io.BytesIO()
         comp_img.save(buf, format="PNG")
         png_bytes = buf.getvalue()
