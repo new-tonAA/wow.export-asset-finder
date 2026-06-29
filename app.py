@@ -352,6 +352,33 @@ def api_delete_index():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/config", methods=["GET"])
+def api_config_get():
+    config_path = os.path.join(PROJECT_DIR, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            return jsonify(json.load(f))
+    return jsonify({"wow_export_dir": ""})
+
+
+@app.route("/api/config", methods=["POST"])
+def api_config_set():
+    import extract_features
+    try:
+        data = request.get_json()
+        config_path = os.path.join(PROJECT_DIR, "config.json")
+        with open(config_path, "w") as f:
+            json.dump(data, f, indent=4)
+        # Reload the path in extract_features module
+        new_dir = data.get("wow_export_dir", "")
+        extract_features.WOW_EXPORT_DIR = new_dir
+        extract_features.NW_EXE = os.path.join(new_dir, "nw.exe")
+        extract_features.CHROMEDRIVER_EXE = os.path.join(new_dir, "chromedriver.exe")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # --- WebSocket Events ---
 
 @socketio.on("request_thumbnails")

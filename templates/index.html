@@ -448,8 +448,21 @@
                 <span id="conn-text">Disconnected</span>
             </div>
             <div>Models: <strong id="index-count">0</strong></div>
+            <button onclick="toggleSettings()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-2);padding:4px 10px;cursor:pointer;font-size:0.85em" title="Settings">&#9881;</button>
         </div>
     </header>
+
+    <!-- Settings Panel (hidden by default) -->
+    <div id="settings-panel" style="display:none;position:absolute;top:46px;right:16px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px 18px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.5);width:420px">
+        <div style="font-size:0.9em;font-weight:600;color:var(--text-1);margin-bottom:10px">Settings</div>
+        <label style="font-size:0.82em;color:var(--text-2);display:block;margin-bottom:4px">wow.export path</label>
+        <div style="display:flex;gap:8px">
+            <input type="text" id="settings-path" placeholder="C:\wow.export\wow.export\bin\win-x64-debug"
+                style="flex:1;padding:7px 10px;background:var(--bg-0);border:1px solid var(--border);border-radius:6px;color:var(--text-1);font-size:0.85em">
+            <button onclick="savePath()" style="padding:7px 14px;background:var(--accent);color:var(--bg-0);border:none;border-radius:6px;font-size:0.85em;font-weight:600;cursor:pointer">Save</button>
+        </div>
+        <div id="settings-msg" style="font-size:0.78em;color:var(--text-3);margin-top:6px"></div>
+    </div>
 
     <div class="layout">
         <!-- Sidebar -->
@@ -832,6 +845,29 @@ window.addEventListener('load', () => {
 document.getElementById('sel-region').addEventListener('change', e => sessionStorage.setItem('selRegion', e.target.value));
 document.getElementById('sel-product').addEventListener('change', e => sessionStorage.setItem('selProduct', e.target.value));
 document.getElementById('sel-category').addEventListener('change', e => sessionStorage.setItem('selCategory', e.target.value));
+
+// === Settings ===
+function toggleSettings() {
+    const panel = document.getElementById('settings-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    if (panel.style.display === 'block') loadCurrentPath();
+}
+function loadCurrentPath() {
+    fetch('/api/config').then(r => r.json()).then(d => {
+        document.getElementById('settings-path').value = d.wow_export_dir || '';
+    });
+}
+function savePath() {
+    const path = document.getElementById('settings-path').value.trim();
+    fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wow_export_dir: path})
+    }).then(r => r.json()).then(d => {
+        document.getElementById('settings-msg').textContent = d.success ? 'Saved!' : ('Error: ' + d.error);
+        setTimeout(() => document.getElementById('settings-msg').textContent = '', 3000);
+    });
+}
 </script>
 </body>
 </html>
