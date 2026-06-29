@@ -412,9 +412,18 @@ def handle_thumbnail_request(data):
                 window.__autoRenderer.dispose();
                 window.__autoRenderer = null;
             }
-            // Restore original getActiveRenderer if it was overridden
-            if (core.view.modelViewerContext)
-                core.view.modelViewerContext.getActiveRenderer = null;
+            // Restore wow.export's original getActiveRenderer from tab_models module
+            if (core.view.modelViewerContext) {
+                const tab_models = require('./js/modules/tab_models');
+                if (tab_models && tab_models.getActiveRenderer) {
+                    core.view.modelViewerContext.getActiveRenderer = tab_models.getActiveRenderer;
+                } else {
+                    core.view.modelViewerContext.getActiveRenderer = () => null;
+                }
+            }
+            // Re-enable background/grid
+            core.view.config.modelViewerShowBackground = true;
+            core.view.config.modelViewerShowGrid = true;
         """)
     except Exception:
         pass
@@ -707,6 +716,26 @@ def _run_extraction(resume, limit, category="all"):
     finally:
         extraction_running = False
         _stop_extraction = False
+        # Release renderer back to wow.export
+        try:
+            if driver:
+                driver.execute_script("""
+                    if (window.__autoRenderer) {
+                        window.__autoRenderer.dispose();
+                        window.__autoRenderer = null;
+                    }
+                    if (core.view.modelViewerContext) {
+                        const tab_models = require('./js/modules/tab_models');
+                        if (tab_models && tab_models.getActiveRenderer)
+                            core.view.modelViewerContext.getActiveRenderer = tab_models.getActiveRenderer;
+                        else
+                            core.view.modelViewerContext.getActiveRenderer = () => null;
+                    }
+                    core.view.config.modelViewerShowBackground = true;
+                    core.view.config.modelViewerShowGrid = true;
+                """)
+        except Exception:
+            pass
 
 
 def _save_all(index, paths, vectors, colors, category="all"):
